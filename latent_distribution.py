@@ -20,11 +20,8 @@ class GaussianKernelDensity(nn.Module):
 	def forward(self, x):
 		return torch.cdist(x, self.X, p=2).pow(2).div(-2*self.bandwidth**2).logsumexp(1) + self.coeff
 	
-	def sample(self, n_samples=1, random_state=None):
+	def sample(self, n_samples=1):
 		with torch.no_grad():
-			if random_state is not None:
-				torch.manual_seed(random_state)
-	
 			indices = torch.randint(0, len(self.X), (n_samples,))
 			return torch.normal(self.X[indices], self.bandwidth)
 
@@ -54,8 +51,8 @@ class kernelLogLikelihood(nn.Module):
 	def forward(self, x):
 		return self.kde(self.pca(x))
 	
-	def sample(self, n_samples=1, random_state=None):
-		X = self.kde.sample(n_samples, random_state)
+	def sample(self, n_samples=1):
+		X = self.kde.sample(n_samples)
 		return self.pca_inverse(X)
 
 class KernelDistribution(nn.Module):
@@ -74,6 +71,13 @@ class KernelDistribution(nn.Module):
 		loglikelihood = torch.vstack(loglikelihood).T
 		logjoint = loglikelihood + self.prior.log()
 		return logjoint
+	
+	def sample(self, n_samples=2):
+		counts = np.random.multinomial(n_samples, self.prior)
+		futures = [torch.jit.fork(k.sample, n) for k, n in zip(self.loglikelihood, counts)]
+		X = torch.vstack([torch.jit.wait(future) for future in futures])
+		y = torch.arange(len(counts)).repeat_interleave(torch.from_numpy(counts))
+		return X, y
 
 class ConvolvedDistribution(nn.Module):
 	def __init__(self, distribution, func_pre, func_post):
