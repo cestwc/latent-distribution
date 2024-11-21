@@ -73,7 +73,7 @@ class KernelDistribution(nn.Module):
 		return logjoint
 	
 	def sample(self, n_samples=2):
-		counts = np.random.multinomial(n_samples, self.prior)
+		counts = np.random.multinomial(n_samples, self.prior.tolist())
 		futures = [torch.jit.fork(k.sample, n) for k, n in zip(self.loglikelihood, counts)]
 		X = torch.vstack([torch.jit.wait(future) for future in futures])
 		y = torch.arange(len(counts)).repeat_interleave(torch.from_numpy(counts))
